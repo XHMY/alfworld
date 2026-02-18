@@ -23,7 +23,7 @@ if ! command -v docker-compose &> /dev/null; then
     echo ""
 fi
 
-# Set data directory
+# Set data directory (expand HOME to absolute path for Docker)
 DATA_DIR="${ALFWORLD_DATA:-$HOME/.cache/alfworld}"
 
 echo "Data directory: $DATA_DIR"

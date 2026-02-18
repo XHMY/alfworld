@@ -68,8 +68,10 @@ docker-compose up --scale alfworld-base=8 -d
 # List running containers and their names
 docker-compose ps
 
-# Note: Scaled containers are named like: alfworld-alfworld-base-1, alfworld-alfworld-base-2, etc.
-# Get container IDs and run commands
+# Note: Docker Compose names containers as <project>-<service>-<index>
+# The project name is typically the directory name (e.g., 'alfworld')
+# So scaled containers will be named like: alfworld-alfworld-base-1, alfworld-alfworld-base-2, etc.
+# To run commands in all scaled containers:
 docker-compose ps -q alfworld-base | while read container_id; do
   docker exec $container_id python examples/simple_example.py &
 done

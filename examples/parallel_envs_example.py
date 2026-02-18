@@ -31,9 +31,14 @@ from alfworld.agents.environment import get_environment
 import alfworld.agents.modules.generic as generic
 
 
-def run_environment(env_id, num_episodes=5):
-    """Run a single environment for multiple episodes."""
-    print(f"[Env {env_id}] Starting environment...")
+def run_environment(worker_id, num_episodes=5):
+    """Run a single environment for multiple episodes.
+    
+    Args:
+        worker_id: Numeric identifier for this worker process
+        num_episodes: Number of episodes to run
+    """
+    print(f"[Worker {worker_id}] Starting environment...")
     
     # Load config
     config = generic.load_config()
@@ -46,7 +51,7 @@ def run_environment(env_id, num_episodes=5):
     results = []
     
     for episode in range(num_episodes):
-        print(f"[Env {env_id}] Episode {episode + 1}/{num_episodes}")
+        print(f"[Worker {worker_id}] Episode {episode + 1}/{num_episodes}")
         
         # Reset environment
         obs, info = env.reset()
@@ -72,14 +77,14 @@ def run_environment(env_id, num_episodes=5):
             info = infos
         
         result = {
-            'env_id': env_id,
+            'worker_id': worker_id,
             'episode': episode,
             'steps': total_steps,
             'reward': total_reward,
             'success': done and total_reward > 0
         }
         results.append(result)
-        print(f"[Env {env_id}] Episode {episode + 1} completed: {result}")
+        print(f"[Worker {worker_id}] Episode {episode + 1} completed: {result}")
     
     return results
 
