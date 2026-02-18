@@ -65,12 +65,13 @@ docker-compose down
 # Start N parallel environments dynamically
 docker-compose up --scale alfworld-base=8 -d
 
-# List running containers
+# List running containers and their names
 docker-compose ps
 
-# Run a command in all containers
-for i in {1..8}; do
-  docker-compose exec -T alfworld-base-$i python examples/simple_example.py &
+# Note: Scaled containers are named like: alfworld-alfworld-base-1, alfworld-alfworld-base-2, etc.
+# Get container IDs and run commands
+docker-compose ps -q alfworld-base | while read container_id; do
+  docker exec $container_id python examples/simple_example.py &
 done
 wait
 ```

@@ -14,6 +14,15 @@ Usage:
 
     # Or from host with docker-compose:
     docker-compose run alfworld-env-1 python examples/parallel_envs_example.py
+
+Note on Multiprocessing:
+    This example uses multiprocessing.Pool. If you encounter pickling/serialization
+    errors with complex game state objects, particularly on Windows or macOS, try
+    setting the multiprocessing start method to 'spawn':
+    
+        import multiprocessing as mp
+        if __name__ == "__main__":
+            mp.set_start_method('spawn', force=True)
 """
 
 import numpy as np
