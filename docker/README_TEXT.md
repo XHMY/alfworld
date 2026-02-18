@@ -69,8 +69,10 @@ docker-compose up --scale alfworld-base=8 -d
 docker-compose ps
 
 # Note: Docker Compose names containers as <project>-<service>-<index>
-# The project name is typically the directory name (e.g., 'alfworld')
-# So scaled containers will be named like: alfworld-alfworld-base-1, alfworld-alfworld-base-2, etc.
+# The project name defaults to the parent directory name (e.g., 'alfworld')
+# You can customize it with: docker-compose -p myproject up
+# Or set COMPOSE_PROJECT_NAME=myproject environment variable
+# Example names: alfworld-alfworld-base-1, alfworld-alfworld-base-2, etc.
 # To run commands in all scaled containers:
 docker-compose ps -q alfworld-base | while read container_id; do
   docker exec $container_id python examples/simple_example.py &

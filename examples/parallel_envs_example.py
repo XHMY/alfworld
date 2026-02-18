@@ -31,12 +31,12 @@ from alfworld.agents.environment import get_environment
 import alfworld.agents.modules.generic as generic
 
 
-def run_environment(worker_id, num_episodes=5):
-    """Run a single environment for multiple episodes.
+def run_worker(worker_id, num_episodes=5):
+    """Run a worker that executes multiple episodes in a single environment.
     
     Args:
         worker_id: Numeric identifier for this worker process
-        num_episodes: Number of episodes to run
+        num_episodes: Number of episodes to run in this worker
     """
     print(f"[Worker {worker_id}] Starting environment...")
     
@@ -97,9 +97,9 @@ def run_parallel_environments(num_envs=4, episodes_per_env=5):
     
     # Create a pool of workers
     with mp.Pool(processes=num_envs) as pool:
-        # Run environments in parallel
+        # Run workers in parallel
         all_results = pool.starmap(
-            run_environment,
+            run_worker,
             [(i, episodes_per_env) for i in range(num_envs)]
         )
     
