@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Base service configuration for ALFWorld text environment
+  alfworld-base:
+    build:
+      context: .
+      dockerfile: Dockerfile.text
+    image: alfworld-text:latest
+    volumes:
+      # Mount data directory (download data first with alfworld-download)
+      - ${ALFWORLD_DATA:-~/.cache/alfworld}:/data:ro
+      # Mount working directory for development
+      - ./examples:/workspace/examples
+    environment:
+      - ALFWORLD_DATA=/data
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    # Prevent service from exiting
+    command: tail -f /dev/null
+
+  # Example: Run 4 parallel text environments
+  alfworld-env-1:
+    extends: alfworld-base
+    container_name: alfworld-env-1
+
+  alfworld-env-2:
+    extends: alfworld-base
+    container_name: alfworld-env-2
+
+  alfworld-env-3:
+    extends: alfworld-base
+    container_name: alfworld-env-3
+
+  alfworld-env-4:
+    extends: alfworld-base
+    container_name: alfworld-env-4
+
+# To scale dynamically, use:
+# docker-compose up --scale alfworld-base=N
