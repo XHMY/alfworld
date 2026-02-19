@@ -14,13 +14,13 @@ Prerequisites:
 """
 
 import argparse
-import asyncio
+from collections import Counter
 import random
 import sys
 import time
-
-import aiohttp
+from tqdm import tqdm
 import requests
+from joblib import Parallel, delayed
 
 
 class Session:
@@ -48,44 +48,137 @@ class Session:
         return False
 
 
-class AsyncSessionGroup:
-    """Async context manager that creates N sessions concurrently and deletes them on exit."""
+def _response_error_detail(response: requests.Response) -> str:
+    """Best-effort parse of API error payloads."""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            detail = payload.get("detail") or payload.get("error_code")
+            if detail:
+                return str(detail)
+    except ValueError:
+        pass
 
-    def __init__(self, http: aiohttp.ClientSession, base_url: str, n: int):
-        self.http = http
-        self.base_url = base_url
-        self.n = n
-        self.sessions = []
+    text = response.text.strip()
+    if text:
+        return text[:160]
+    return f"HTTP {response.status_code}"
 
-    async def __aenter__(self):
-        creates = [self.http.post(f"{self.base_url}/sessions", json={}) for _ in range(self.n)]
-        responses = await asyncio.gather(*creates, return_exceptions=True)
-        rejected = 0
-        for resp in responses:
-            if isinstance(resp, Exception):
-                rejected += 1
-                continue
+
+def _run_one_session_job(base_url: str, max_steps: int) -> dict:
+    """Run one full session lifecycle: create -> step loop -> delete."""
+    started_at = time.time()
+    sid = None
+    steps = 0
+    done = False
+    won = False
+    score = 0.0
+    task = ""
+
+    try:
+        create_response = requests.post(f"{base_url}/sessions", json={})
+        if create_response.status_code >= 400:
+            return {
+                "success": False,
+                "session_id": None,
+                "steps": 0,
+                "done": False,
+                "won": False,
+                "score": 0.0,
+                "status": "create_error",
+                "task": "",
+                "error_code": f"HTTP_{create_response.status_code}",
+                "error": _response_error_detail(create_response),
+                "duration_s": time.time() - started_at,
+            }
+
+        session_data = create_response.json()
+        sid = session_data["session_id"]
+        observation = session_data.get("observation", "")
+        task = observation.split("Your task is to: ")[-1]
+        admissible = session_data.get("admissible_commands", [])
+
+        status = "max_steps"
+        for step in range(1, max_steps + 1):
+            action = random.choice(admissible) if admissible else "look"
+            step_response = requests.post(
+                f"{base_url}/sessions/{sid}/step",
+                json={"action": action},
+            )
+            if step_response.status_code >= 400:
+                return {
+                    "success": False,
+                    "session_id": sid,
+                    "steps": steps,
+                    "done": done,
+                    "won": won,
+                    "score": score,
+                    "status": "step_error",
+                    "task": task,
+                    "error_code": f"HTTP_{step_response.status_code}",
+                    "error": _response_error_detail(step_response),
+                    "duration_s": time.time() - started_at,
+                }
+
+            result = step_response.json()
+            steps = step
+            done = result.get("done", False)
+            won = result.get("won", False)
+            score = result.get("score", score)
+
+            if done:
+                status = "done"
+                break
+
+            admissible = result.get("admissible_commands", [])
+
+        return {
+            "success": True,
+            "session_id": sid,
+            "steps": steps,
+            "done": done,
+            "won": won,
+            "score": score,
+            "status": status,
+            "task": task,
+            "error_code": None,
+            "error": None,
+            "duration_s": time.time() - started_at,
+        }
+    except requests.RequestException as exc:
+        return {
+            "success": False,
+            "session_id": sid,
+            "steps": steps,
+            "done": done,
+            "won": won,
+            "score": score,
+            "status": "request_error",
+            "task": task,
+            "error_code": "REQUEST_EXCEPTION",
+            "error": str(exc),
+            "duration_s": time.time() - started_at,
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "session_id": sid,
+            "steps": steps,
+            "done": done,
+            "won": won,
+            "score": score,
+            "status": "unexpected_error",
+            "task": task,
+            "error_code": type(exc).__name__,
+            "error": str(exc),
+            "duration_s": time.time() - started_at,
+        }
+    finally:
+        if sid:
             try:
-                data = await resp.json()
-                if "session_id" in data:
-                    self.sessions.append(data)
-                else:
-                    rejected += 1
-                    error_code = data.get("error_code", "unknown")
-                    print(f"  Session rejected: {data.get('detail', error_code)}")
+                requests.delete(f"{base_url}/sessions/{sid}")
             except Exception:
-                rejected += 1
-        if rejected:
-            print(f"  ({rejected}/{self.n} sessions rejected — server at capacity)")
-        return self.sessions
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        deletes = [
-            self.http.delete(f"{self.base_url}/sessions/{s['session_id']}")
-            for s in self.sessions
-        ]
-        await asyncio.gather(*deletes, return_exceptions=True)
-        return False
+                pass
 
 
 def single_session_demo(base_url: str):
@@ -126,72 +219,67 @@ def single_session_demo(base_url: str):
     print()
 
 
-async def concurrent_sessions_demo(base_url: str, n: int = 3):
-    """Run N sessions in parallel, each taking random actions."""
+def concurrent_sessions_demo(base_url: str, n: int = 3, total_jobs: int = 100):
+    """Run many sessions in parallel; each job owns one full lifecycle."""
     print(f"=== Concurrent Sessions Demo ({n} sessions) ===\n")
+    max_steps = 10
+    t0 = time.time()
+    results = Parallel(n_jobs=n, backend="threading")(
+        delayed(_run_one_session_job)(base_url, max_steps=max_steps)
+        for _ in tqdm(range(total_jobs), desc="Running jobs", total=total_jobs)
+    )
+    elapsed = time.time() - t0
 
-    async with aiohttp.ClientSession() as http:
-        t0 = time.time()
-        async with AsyncSessionGroup(http, base_url, n) as sessions:
-            print(f"Created {len(sessions)} sessions in {time.time() - t0:.2f}s")
+    successes = [r for r in results if r["success"]]
+    failures = [r for r in results if not r["success"]]
+    finished = [r for r in successes if r["done"]]
+    unfinished = [r for r in successes if not r["done"]]
+    wins = [r for r in finished if r["won"]]
+    losses = [r for r in finished if not r["won"]]
 
-            for s in sessions:
-                task = s["observation"].split("Your task is to: ")[-1]
-                print(f"  {s['session_id'][:8]}... -> {task[:60]}")
-            print()
+    print(f"Processed {len(results)} jobs in {elapsed:.2f}s")
+    print(
+        f"  Success: {len(successes)} | Failed: {len(failures)} | "
+        f"Finished: {len(finished)} | Reached max steps: {len(unfinished)}"
+    )
 
-            # Run all sessions for a few steps
-            states = {s["session_id"]: s["admissible_commands"] for s in sessions}
-            active = set(states.keys())
-            max_steps = 10
+    if successes:
+        avg_steps = sum(r["steps"] for r in successes) / len(successes)
+        avg_duration = sum(r["duration_s"] for r in successes) / len(successes)
+        avg_score = sum(r["score"] for r in successes) / len(successes)
+        print(
+            f"  Won: {len(wins)} | Lost: {len(losses)} | "
+            f"avg_steps={avg_steps:.2f} | avg_score={avg_score:.2f} | "
+            f"avg_duration={avg_duration:.2f}s"
+        )
 
-            for step in range(1, max_steps + 1):
-                if not active:
-                    break
+        print("\nSample successful jobs:")
+        for item in successes[: min(5, len(successes))]:
+            sid = item["session_id"][:8]
+            outcome = "WON" if item["won"] else ("LOST" if item["done"] else "INCOMPLETE")
+            print(
+                f"  {sid}... {outcome:10s} "
+                f"steps={item['steps']:2d} score={item['score']:.2f} "
+                f"task={item['task'][:55]}"
+            )
 
-                actions = {}
-                for sid in active:
-                    cmds = states[sid]
-                    actions[sid] = random.choice(cmds) if cmds else "look"
+    if failures:
+        by_error = Counter(r["error_code"] or "UNKNOWN" for r in failures)
+        print("\nFailure reasons:")
+        for error_code, count in by_error.items():
+            print(f"  {error_code}: {count}")
 
-                t1 = time.time()
-                step_coros = [
-                    http.post(
-                        f"{base_url}/sessions/{sid}/step",
-                        json={"action": act},
-                    )
-                    for sid, act in actions.items()
-                ]
-                responses = await asyncio.gather(*step_coros)
-                results = {
-                    sid: await r.json()
-                    for sid, r in zip(actions.keys(), responses)
-                }
-                elapsed = time.time() - t1
+        print("\nSample failures:")
+        for item in failures[: min(5, len(failures))]:
+            sid = item["session_id"][:8] if item["session_id"] else "--------"
+            print(f"  {sid}... {item['status']}: {item['error']}")
+    print()
 
-                print(f"Step {step:2d} ({len(active)} sessions, {elapsed:.3f}s):")
-                done_this_round = []
-                for sid, res in results.items():
-                    tag = sid[:8]
-                    obs = res["observation"][:60]
-                    print(f"  {tag}... [{actions[sid][:30]}] -> {obs}")
-                    if res["done"]:
-                        outcome = "WON" if res["won"] else "LOST"
-                        print(f"           ** {outcome} **")
-                        done_this_round.append(sid)
-                    else:
-                        states[sid] = res["admissible_commands"]
-
-                for sid in done_this_round:
-                    active.discard(sid)
-                print()
-
-        print(f"Cleaned up {len(sessions)} sessions")
-
-        # Final health check
-        r = await http.get(f"{base_url}/health")
-        health = await r.json()
-        print(f"Health: active_sessions={health['active_sessions']}")
+    # Final health check
+    r = requests.get(f"{base_url}/health")
+    r.raise_for_status()
+    health = r.json()
+    print(f"Health: active_sessions={health['active_sessions']}")
 
 
 def main():
@@ -204,8 +292,14 @@ def main():
     parser.add_argument(
         "--concurrent",
         type=int,
-        default=3,
-        help="Number of concurrent sessions (default: 3)",
+        default=24,
+        help="Number of concurrent jobs (default: 8)",
+    )
+    parser.add_argument(
+        "--total_jobs",
+        type=int,
+        default=100,
+        help="Total number of jobs to run (default: 100)",
     )
     args = parser.parse_args()
 
@@ -221,8 +315,8 @@ def main():
         print("Start it with: python -m alfworld.api --config configs/base_config.yaml")
         sys.exit(1)
 
-    single_session_demo(args.base_url)
-    asyncio.run(concurrent_sessions_demo(args.base_url, n=args.concurrent))
+    # single_session_demo(args.base_url)
+    concurrent_sessions_demo(args.base_url, n=args.concurrent, total_jobs=args.total_jobs)
 
 
 if __name__ == "__main__":

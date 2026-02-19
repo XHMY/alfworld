@@ -30,8 +30,8 @@ def main():
     parser.add_argument(
         "--max-sessions",
         type=int,
-        default=8,
-        help="Maximum concurrent sessions (default: 8)",
+        default=64,
+        help="Maximum concurrent sessions (default: 64)",
     )
     parser.add_argument(
         "--batch-window-ms",

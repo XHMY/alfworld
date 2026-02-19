@@ -358,11 +358,8 @@ class SessionManager:
             except asyncio.CancelledError:
                 pass
 
-        session_ids = list(self._sessions.keys())
-        for sid in session_ids:
-            try:
-                await self.delete_session(sid)
-            except Exception:
-                pass
+        # Clear sessions without waiting for graceful container stop
+        self._sessions.clear()
 
+        # Force-kill all containers at once (SIGKILL, no wait)
         await self._kill_all_labeled_containers()
