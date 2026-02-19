@@ -61,10 +61,15 @@ docker run -v ~/.cache/alfworld:/data:ro \
 For running multiple environments in parallel, use TextWorld's built-in async batching:
 
 ```python
+import os
+import yaml
 from alfworld.agents.environment import get_environment
-import alfworld.agents.modules.generic as generic
 
-config = generic.load_config()
+# Load config directly
+config_file = 'configs/base_config.yaml'
+with open(config_file, 'r') as f:
+    config = yaml.safe_load(f)
+
 env = get_environment(config['env']['type'])(config, train_eval='train')
 
 # Process multiple games in parallel within a single environment
