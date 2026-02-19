@@ -75,30 +75,6 @@ while True:
 ```
 Run `python <script>.py configs/base_config.yaml`
 
-## Parallelization
-
-ALFWorld supports multiple parallelization strategies:
-
-**1. TextWorld Async Batching (Built-in)**
-```python
-# Single environment with batch processing (most efficient for training)
-env = env.init_env(batch_size=8)  # Process 8 games in parallel
-```
-
-**2. Docker Containers (Best for Cloud/Distributed)**
-```bash
-# Run multiple isolated environments
-docker-compose up --scale alfworld-base=10 -d
-```
-
-**3. Python Multiprocessing**
-```python
-# See examples/parallel_envs_example.py
-# Good for local development
-```
-
-See [docker/README_TEXT.md](docker/README_TEXT.md) for detailed parallelization guide.
-
 ## Install Source
 
 Installing from source is recommended for development.
@@ -156,26 +132,25 @@ Tested on:
 
 ## Docker Setup
 
-### Text-Only Docker (Recommended for Parallelization)
+### Text-Only Docker (Lightweight, CPU-only)
 
-**NEW**: Lightweight, CPU-only Docker setup for text environments - perfect for parallel execution!
+A lightweight Docker setup for text-only environments (no GPU required):
 
 ```bash
-# Build the text-only image (no GPU required)
+# Build the text-only image
 docker build -f Dockerfile.text -t alfworld-text:latest .
 
-# Quick start with docker-compose (4 parallel environments)
-docker-compose up -d
+# Run interactively
+docker run -it -v ~/.cache/alfworld:/data:ro alfworld-text:latest bash
 
-# Run example
-docker-compose exec alfworld-env-1 python examples/simple_example.py
+# Or run a Python script
+docker run -v ~/.cache/alfworld:/data:ro \
+  alfworld-text:latest python examples/simple_example.py
 ```
 
-See [docker/README_TEXT.md](docker/README_TEXT.md) for detailed instructions on:
-- Running parallel environments with Docker
-- Multi-container orchestration with docker-compose
-- Best practices for parallelization strategies
-- Comparison of different parallelization approaches
+**Note**: For parallelization, use TextWorld's built-in async batching with `batch_size` parameter instead of multiple containers.
+
+See [docker/README.md](docker/README.md) for more details.
 
 ### Original Docker Setup (GPU-enabled for THOR)
 
