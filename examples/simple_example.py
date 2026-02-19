@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+"""
+Simple example: Running a single ALFWorld text environment
+
+This is a basic example showing how to use ALFWorld text environment
+in a Docker container.
+
+Usage:
+    python examples/simple_example.py [config_file]
+    
+If no config file is provided, uses configs/base_config.yaml
+"""
+
+import os
+import sys
+import yaml
+import numpy as np
+from alfworld.agents.environment import get_environment
+
+
+def load_config(config_file=None):
+    """Load config file, using default if not provided."""
+    if config_file is None:
+        # Use default config file
+        config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 
+                                   'configs', 'base_config.yaml')
+    
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"Config file not found: {config_file}")
+    
+    with open(config_file, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    return config
+
+
+def main():
+    print("Loading ALFWorld text environment...")
+    
+    # Load config
+    config_file = sys.argv[1] if len(sys.argv) > 1 else None
+    config = load_config(config_file)
+    config['env']['type'] = 'AlfredTWEnv'  # Text-only environment
+    
+    # Setup environment
+    env = get_environment(config['env']['type'])(config, train_eval='train')
+    env = env.init_env(batch_size=1)
+    
+    print("\nEnvironment loaded successfully!")
+    print("Running a random agent for 1 episode...\n")
+    
+    # Reset environment
+    obs, info = env.reset()
+    print(f"Initial observation:\n{obs[0]}\n")
+    
+    total_steps = 0
+    max_steps = 50
+    
+    while total_steps < max_steps:
+        # Get random action from admissible commands
+        admissible_commands = list(info['admissible_commands'])
+        
+        if len(admissible_commands[0]) > 0:
+            action = [np.random.choice(admissible_commands[0])]
+        else:
+            action = ["look"]
+        
+        print(f"Step {total_steps + 1}: {action[0]}")
+        
+        # Step environment
+        obs, scores, dones, infos = env.step(action)
+        
+        print(f"  Observation: {obs[0][:100]}...")  # Print first 100 chars
+        print(f"  Score: {scores[0]}")
+        
+        total_steps += 1
+        
+        if dones[0]:
+            if scores[0] > 0:
+                print(f"\n✓ Task completed successfully in {total_steps} steps!")
+            else:
+                print(f"\n✗ Task failed after {total_steps} steps")
+            break
+        
+        info = infos
+    
+    if not dones[0]:
+        print(f"\n⊗ Episode terminated after {max_steps} steps (max limit)")
+    
+    print("\nExample completed!")
+
+
+if __name__ == "__main__":
+    main()

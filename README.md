@@ -132,6 +132,28 @@ Tested on:
 
 ## Docker Setup
 
+### Text-Only Docker (Lightweight, CPU-only)
+
+A lightweight Docker setup for text-only environments (no GPU required):
+
+```bash
+# Build the text-only image
+docker build -f Dockerfile.text -t alfworld-text:latest .
+
+# Run interactively
+docker run -it -v ~/.cache/alfworld:/data:ro alfworld-text:latest bash
+
+# Or run a Python script
+docker run -v ~/.cache/alfworld:/data:ro \
+  alfworld-text:latest python examples/simple_example.py
+```
+
+**Note**: For parallelization, use TextWorld's built-in async batching with `batch_size` parameter instead of multiple containers.
+
+See [docker/README.md](docker/README.md) for more details.
+
+### Original Docker Setup (GPU-enabled for THOR)
+
 > [!WARNING]
 > This docker setup has been tested for an older version of ALFWorld.
 
