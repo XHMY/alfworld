@@ -6,19 +6,40 @@ This is a basic example showing how to use ALFWorld text environment
 in a Docker container.
 
 Usage:
-    python examples/simple_example.py
+    python examples/simple_example.py [config_file]
+    
+If no config file is provided, uses configs/base_config.yaml
 """
 
+import os
+import sys
+import yaml
 import numpy as np
 from alfworld.agents.environment import get_environment
-import alfworld.agents.modules.generic as generic
+
+
+def load_config(config_file=None):
+    """Load config file, using default if not provided."""
+    if config_file is None:
+        # Use default config file
+        config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 
+                                   'configs', 'base_config.yaml')
+    
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"Config file not found: {config_file}")
+    
+    with open(config_file, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    return config
 
 
 def main():
     print("Loading ALFWorld text environment...")
     
     # Load config
-    config = generic.load_config()
+    config_file = sys.argv[1] if len(sys.argv) > 1 else None
+    config = load_config(config_file)
     config['env']['type'] = 'AlfredTWEnv'  # Text-only environment
     
     # Setup environment
