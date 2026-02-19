@@ -42,8 +42,8 @@ def main():
     parser.add_argument(
         "--idle-timeout",
         type=int,
-        default=600,
-        help="Idle session timeout in seconds (default: 600)",
+        default=120,
+        help="Idle session timeout in seconds (default: 120)",
     )
     parser.add_argument(
         "--host",

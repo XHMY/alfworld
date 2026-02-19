@@ -1,7 +1,11 @@
 """Custom exceptions for the ALFWorld API."""
 
+import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("alfworld.api")
 
 
 class SessionNotFound(Exception):
@@ -58,7 +62,16 @@ def register_error_handlers(app):
 
     @app.exception_handler(ContainerError)
     async def container_error_handler(request: Request, exc: ContainerError):
+        logger.error("ContainerError: %s", exc)
         return JSONResponse(
             status_code=500,
             content={"detail": str(exc), "error_code": "CONTAINER_ERROR"},
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, exc: Exception):
+        logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "error_code": "INTERNAL_ERROR"},
         )

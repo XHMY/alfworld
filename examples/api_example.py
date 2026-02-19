@@ -60,15 +60,23 @@ class AsyncSessionGroup:
     async def __aenter__(self):
         creates = [self.http.post(f"{self.base_url}/sessions", json={}) for _ in range(self.n)]
         responses = await asyncio.gather(*creates, return_exceptions=True)
+        rejected = 0
         for resp in responses:
             if isinstance(resp, Exception):
+                rejected += 1
                 continue
             try:
                 data = await resp.json()
                 if "session_id" in data:
                     self.sessions.append(data)
+                else:
+                    rejected += 1
+                    error_code = data.get("error_code", "unknown")
+                    print(f"  Session rejected: {data.get('detail', error_code)}")
             except Exception:
-                pass
+                rejected += 1
+        if rejected:
+            print(f"  ({rejected}/{self.n} sessions rejected — server at capacity)")
         return self.sessions
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

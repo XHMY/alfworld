@@ -12,6 +12,7 @@ class ServerConfig(BaseModel):
     data_volume: str = "~/.cache/alfworld:/data:ro"
     project_root: str = ""  # auto-detected if empty; mounted into container so worker.py is available
     max_sessions: int = 8
+    container_stop_timeout_s: int = 2
     batch_window_ms: int = 50
     idle_timeout_s: int = 600
     host: str = "0.0.0.0"

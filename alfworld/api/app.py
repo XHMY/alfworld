@@ -101,6 +101,9 @@ def create_app(server_config: ServerConfig) -> FastAPI:
         )
         app.state.session_manager = sm
 
+        # Kill any orphaned containers from a previous server run
+        await sm.cleanup_orphans()
+
         # Create batch coordinator
         batcher = BatchCoordinator(
             session_manager=sm,

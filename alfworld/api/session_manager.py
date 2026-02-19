@@ -69,8 +69,7 @@ class SessionManager:
         game_file: Optional[str] = None,
         task_type: Optional[int] = None,
     ) -> Session:
-        acquired = self._semaphore._value > 0
-        if not acquired:
+        if self._semaphore.locked():
             raise NoSlotsAvailable(self.config.max_sessions)
         await self._semaphore.acquire()
 
@@ -134,6 +133,7 @@ class SessionManager:
             raise
         except Exception as e:
             self._semaphore.release()
+            logger.exception("Failed to create session")
             raise ContainerError(f"Failed to create session: {e}") from e
 
     def _to_container_path(self, host_path: str) -> str:
@@ -300,7 +300,10 @@ class SessionManager:
     async def _kill_container(self, container):
         loop = asyncio.get_event_loop()
         try:
-            await loop.run_in_executor(None, partial(container.kill))
+            await loop.run_in_executor(
+                None,
+                partial(container.stop, timeout=self.config.container_stop_timeout_s),
+            )
         except Exception:
             # Container may already be stopped/removed
             pass
@@ -325,6 +328,28 @@ class SessionManager:
                 except Exception:
                     pass
 
+    async def _kill_all_labeled_containers(self):
+        """Find and kill ALL containers with the alfworld-session label."""
+        loop = asyncio.get_event_loop()
+        try:
+            containers = await loop.run_in_executor(
+                None,
+                partial(self.docker_client.containers.list,
+                        filters={"label": "alfworld-session"}),
+            )
+            for c in containers:
+                try:
+                    await loop.run_in_executor(None, c.kill)
+                    logger.info("Killed orphaned container: %s", c.short_id)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning("Error cleaning up labeled containers: %s", e)
+
+    async def cleanup_orphans(self):
+        """Kill any leftover containers from a previous server run."""
+        await self._kill_all_labeled_containers()
+
     async def shutdown(self):
         if self._cleanup_task:
             self._cleanup_task.cancel()
@@ -339,3 +364,5 @@ class SessionManager:
                 await self.delete_session(sid)
             except Exception:
                 pass
+
+        await self._kill_all_labeled_containers()
